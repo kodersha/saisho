@@ -59,6 +59,12 @@ class Saisho {
     public function __construct() {
         $this->time = microtime(true);
         $this->setPagePaths($this->getRequestedPage());
+        if (in_array($this->requestedPage, ['admin', 'admin/login', 'admin/logout', 'admin/new'], true)) {
+            require_once INC_DIR . DS . 'Admin.php';
+            $admin = new SaishoAdmin();
+            $admin->handle($this->requestedPage);
+            return;
+        }
         $this->handleRequest($this->requestedPage);
     }
 
