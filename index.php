@@ -3,7 +3,8 @@
 最小  —  Saishō MK. 2
 https://paulglushak.com/saisho
 */
-define('SAISHO_VERSION', '20200830');
+require_once __DIR__ . '/inc/Security.php';
+define('SAISHO_VERSION', '20261101');
 define('META_TITLE', 'Saisho');
 define('META_DESCRIPTION', 'Very (VERY) simple and quick semi-static site engine');
 define('HOST', '//' . $_SERVER['HTTP_HOST']);
@@ -62,8 +63,8 @@ class Saisho {
                 $page = (object)['type'=>'list', 'content'=>$this->renderPageList($list, 'project')];
             break;
             default:
-                if (file_exists($this->pagePath)) {
-                    if (!$this->tryCache($this->cachedPagePath)) {
+                if (saisho_is_safe_content_file($this->pagePath)) {
+                    if (!$this->tryCache($this->cachedPagePath, $this->pagePath)) {
                         $page = (object)['type' => 'page', 'content' => $this->renderPage($this->pagePath) ];
                     }
                 } else {
@@ -110,10 +111,11 @@ class Saisho {
      */
     public function parsePageList(array $list, $filter) {
         if (empty($list)) {
-            return;
+            return [];
         }
         $parsedPages = [];
         foreach ($list as $name => $path) {
+            if (!saisho_is_safe_content_file($path)) { continue; }
             $page = $this->renderPage($path, true);
             $parsedPages[$name] = $page;
         }
@@ -142,18 +144,13 @@ class Saisho {
         $this->sortPageList($list);
         $html = '<ol reversed class="pl">' . PHP_EOL;
         foreach ($list as $handle => $page) {
-            if (isset($page->style)) {
-                $style = ' style="' . $page->style . '"';
-            } else {
-                $style = '';
-            }
-            if (!empty($page->tags)) {
-                $tags = ' [' . implode(', ', $page->tags) . ']';
-            } else {
-                $tags = '';
-            }
-            // $html.= "<li><a{$style} href='{$handle}'>{$page->title}</a> <span class='g'> {$page->date}{$tags}</span></li>" . PHP_EOL;
-            $html.= "<li><span class='g'>{$page->date}</span> <a{$style} href='{$handle}'>{$page->title}</a></li>" . PHP_EOL;
+            $safeHandle = saisho_escape($handle);
+            $safeTitle = saisho_escape($page->title ?? 'untitled');
+            $safeDate = saisho_escape($page->date ?? '');
+            $safeTags = !empty($page->tags)
+                ? ' [' . implode(', ', array_map('saisho_escape', $page->tags)) . ']'
+                : '';
+            $html .= '<li><span class="g">' . $safeDate . '</span> <a href="' . $safeHandle . '">' . $safeTitle . '</a>' . $safeTags . '</li>' . PHP_EOL;
         }
         $html.= '</ol>' . PHP_EOL;
         return (string)$html;
@@ -177,7 +174,7 @@ class Saisho {
         $parsed = [];
         preg_match("'^---(.+?)---'si", $str, $yaml);
         if (!isset($yaml[0])) {
-            return (object)['body' => $str];
+            return ['body' => $str];
         }
         $str = str_replace($yaml[0], '', $str);
         $parsed['body'] = $str;
@@ -207,6 +204,9 @@ class Saisho {
         $page['modified'] = filectime($pageName);
         $page['tags'] = isset($page['tags']) ? explode(',', $page['tags']) : [];
         $parsedown = new ParsedownExtended(["toc" => ["enable" => true, "inline" => true], "mark" => true, "insert" => true, "task" => true, "kbd" => true]);
+        if (method_exists($parsedown, 'setSafeMode')) {
+            $parsedown->setSafeMode(true);
+        }
         if (!$onlyYaml) {
             $page['body'] = $parsedown->text($page['body']);
         } else {
@@ -234,10 +234,10 @@ class Saisho {
         <atom:link href="' . HOST . '/feed.xml" rel="self" type="application/rss+xml"/>' . PHP_EOL;
         foreach ($pages as $handle => $page) {
             $xml.= '<item>' . PHP_EOL;
-            $xml.= '<title>' . $page->title . '</title>' . PHP_EOL;
-            $xml.= '<link>' . HOST . DS . $handle . '</link>' . PHP_EOL;
-            $xml.= '<pubDate>' . date('r', strtotime($page->date)) . '</pubDate>' . PHP_EOL;
-            $xml.= '<description>' . ($page->description??'') . '</description>' . PHP_EOL;
+            $xml.= '<title>' . saisho_xml_escape($page->title) . '</title>' . PHP_EOL;
+            $xml.= '<link>' . saisho_xml_escape(HOST . '/' . rawurlencode($handle)) . '</link>' . PHP_EOL;
+            $xml.= '<pubDate>' . saisho_xml_escape(date('r', strtotime($page->date) ?: time())) . '</pubDate>' . PHP_EOL;
+            $xml.= '<description>' . saisho_xml_escape(strip_tags((string)($page->description ?? ''))) . '</description>' . PHP_EOL;
             $xml.= '</item>' . PHP_EOL;
         }
         $xml.= '</channel></rss>';
@@ -275,12 +275,18 @@ class Saisho {
      * @param string $filePath file to read
      * @return void|bool reads the file and exits if cache exits, returns false if not
      */
-    private function tryCache(string $filePath) {
-        $filectime = @filectime($filePath);
-        if ($filectime && (time() - $filectime <= CACHE_TIME)) {
+    private function tryCache(string $filePath, string $sourcePath = '') {
+        $cacheTime = @filemtime($filePath);
+        $sourceTime = $sourcePath !== '' ? @filemtime($sourcePath) : false;
+        if (
+            $cacheTime !== false &&
+            (time() - $cacheTime) >= 0 &&
+            (time() - $cacheTime) <= CACHE_TIME &&
+            ($sourcePath === '' || ($sourceTime !== false && $cacheTime >= $sourceTime))
+        ) {
+            header('Content-Type: text/html; charset=UTF-8');
             readfile($filePath);
-            echo '<pre>' . round(((microtime(true) - $this->time) * 1000), 3) . 'ms</pre>';
-            exit;
+            return true;
         }
         return false;
     }

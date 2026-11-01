@@ -5,8 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Saisho Mk.2">
   <link href="data:image/x-icon;base64,AAA" rel="icon">
-  <link href="feed.xml" rel="alternate" type="application/rss+xml" title="<?php echo META_TITLE ?> RSS Feed">
-  <title><?php echo isset($content['title']) ? $content['title'] . ' &mdash; ' . META_TITLE : META_TITLE; ?></title>
+  <link href="feed.xml" rel="alternate" type="application/rss+xml" title="<?= saisho_escape(META_TITLE . ' RSS Feed') ?>">
+  <?php
+    $documentTitle = is_object($page->content) && isset($page->content->title)
+      ? $page->content->title . ' — ' . META_TITLE
+      : META_TITLE;
+  ?>
+  <title><?= saisho_escape($documentTitle) ?></title>
   <style>
 	body { font: 17px/1.6 sans-serif; text-rendering: optimizeLegibility; padding: 2rem; contain: layout }
 	pre { white-space: pre-wrap; word-break: break-all }
