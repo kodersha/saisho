@@ -234,10 +234,10 @@ class Saisho {
         <atom:link href="' . HOST . '/feed.xml" rel="self" type="application/rss+xml"/>' . PHP_EOL;
         foreach ($pages as $handle => $page) {
             $xml.= '<item>' . PHP_EOL;
-            $xml.= '<title>' . $page->title . '</title>' . PHP_EOL;
-            $xml.= '<link>' . HOST . DS . $handle . '</link>' . PHP_EOL;
-            $xml.= '<pubDate>' . date('r', strtotime($page->date)) . '</pubDate>' . PHP_EOL;
-            $xml.= '<description>' . ($page->description??'') . '</description>' . PHP_EOL;
+            $xml.= '<title>' . saisho_xml_escape($page->title) . '</title>' . PHP_EOL;
+            $xml.= '<link>' . saisho_xml_escape(HOST . '/' . rawurlencode($handle)) . '</link>' . PHP_EOL;
+            $xml.= '<pubDate>' . saisho_xml_escape(date('r', strtotime($page->date) ?: time())) . '</pubDate>' . PHP_EOL;
+            $xml.= '<description>' . saisho_xml_escape(strip_tags((string)($page->description ?? ''))) . '</description>' . PHP_EOL;
             $xml.= '</item>' . PHP_EOL;
         }
         $xml.= '</channel></rss>';
