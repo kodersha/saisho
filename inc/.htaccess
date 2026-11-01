@@ -1,0 +1,2 @@
+# Include files are loaded by PHP and should not be requested directly.
+Require all denied
