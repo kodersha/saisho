@@ -6,10 +6,7 @@
  *   SAISHO_ADMIN_USERNAME=admin php bin/create-admin.php
  *   (The password is prompted interactively and hidden on POSIX terminals.)
  *
- * PowerShell:
- *   $env:SAISHO_ADMIN_USERNAME = "admin"
- *   $env:SAISHO_ADMIN_PASSWORD = "long-random-password"
- *   php bin/create-admin.php
+ * PowerShell password prompting guidance is documented in SECURITY.md.
  */
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
