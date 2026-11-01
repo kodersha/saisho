@@ -1,12 +1,11 @@
 <?php
 /*
-最小  —  Saishō MK. 2
-https://paulglushak.com/saisho
-*/
-define('SAISHO_VERSION', '20200830');
+ * Saisho MK. 2
+ * Security hardening pass.
+ */
+define('SAISHO_VERSION', '20261101');
 define('META_TITLE', 'Saisho');
 define('META_DESCRIPTION', 'Very (VERY) simple and quick semi-static site engine');
-define('HOST', '//' . $_SERVER['HTTP_HOST']);
 define('DS', DIRECTORY_SEPARATOR);
 define('ROOT_DIR', __DIR__);
 define('DATA_DIR', ROOT_DIR . DS . 'data');
@@ -15,125 +14,179 @@ define('CACHE_DIR', ROOT_DIR . DS . 'cache');
 define('INC_DIR', ROOT_DIR . DS . 'inc');
 define('CACHE_TIME', 1000);
 define('TAGS_TO_HIDE', ['hide']);
+
+function saisho_escape($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function saisho_xml_escape($value) {
+    return htmlspecialchars((string)$value, ENT_XML1 | ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/* Use a configured canonical origin for feeds. Never trust HTTP_HOST. */
+function saisho_site_url() {
+    $configured = getenv('SAISHO_SITE_URL');
+    if ($configured && filter_var($configured, FILTER_VALIDATE_URL)) {
+        $parts = parse_url($configured);
+        if (isset($parts['scheme'], $parts['host']) &&
+            in_array(strtolower($parts['scheme']), ['http', 'https'], true) &&
+            !isset($parts['user'], $parts['pass'], $parts['query'], $parts['fragment'])) {
+            return rtrim($configured, '/');
+        }
+    }
+
+    $serverName = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost';
+    if (!preg_match('/\\A[a-zA-Z0-9.-]+\\z/', $serverName)) {
+        $serverName = 'localhost';
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ? 'https' : 'http';
+    return $scheme . '://' . $serverName;
+}
+
+function saisho_security_headers() {
+    if (headers_sent()) {
+        return;
+    }
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'");
+    if (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') {
+        header('Strict-Transport-Security: max-age=31536000');
+    }
+}
+saisho_security_headers();
+
 class Saisho {
     public $requestedPage, $pagePath, $cachedPagePath, $time;
 
-    public function __construct()
-    {
-        $this->setPagePaths($this->getRequestedPage());
+    public function __construct() {
         $this->time = microtime(true);
+        $this->setPagePaths($this->getRequestedPage());
         $this->handleRequest($this->requestedPage);
     }
 
-    /**
-     * Get the requested page from the URI
-     *
-     * @return string
-     */
     public function getRequestedPage() {
-        return (string)trim($_SERVER['REQUEST_URI'], '/');
+        $uri = isset($_SERVER['REQUEST_URI']) ? (string)$_SERVER['REQUEST_URI'] : '/';
+        $path = parse_url($uri, PHP_URL_PATH);
+        if (!is_string($path)) {
+            return "\\0";
+        }
+        $path = rawurldecode($path);
+        $path = trim($path, '/');
+        if ($path === '') {
+            return '';
+        }
+        if (strpos($path, "\\0") !== false || strpos($path, '\\\\') !== false ||
+            preg_match('/[\\x00-\\x1F\\x7F]/', $path) ||
+            !preg_match('/\\A[A-Za-z0-9_-]+(?:\\/[A-Za-z0-9_-]+)*\\z/', $path)) {
+            return "\\0";
+        }
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                return "\\0";
+            }
+        }
+        return $path;
     }
-    /**
-     * Set the data and cache page paths for the requested page
-     *
-     * @param string $page the requested page
-     * @return void
-     */
+
     public function setPagePaths(string $page) {
         $this->requestedPage = $page;
-        $this->pagePath = DATA_DIR . DS . $this->requestedPage. '.md';
-        $this->cachedPagePath = CACHE_DIR . DS . $this->requestedPage. '.html';
-    }
-    /**
-     * Request handle aka router.
-     * Constructs page object based on requested page where empty is a list and a string is a page.
-     *
-     * @param string $requestedPage
-     * @return void
-     */
-    public function handleRequest(string $requestedPage) {
-        switch ($requestedPage) {
-            case '':
-                $list = $this->listPages();
-                $page = (object)['type' => 'list', 'content' => $this->renderPageList($list, true) ];
-            break;
-            case 'projects':
-                $list = $this->listPages();
-                $page = (object)['type'=>'list', 'content'=>$this->renderPageList($list, 'project')];
-            break;
-            default:
-                if (file_exists($this->pagePath)) {
-                    if (!$this->tryCache($this->cachedPagePath)) {
-                        $page = (object)['type' => 'page', 'content' => $this->renderPage($this->pagePath) ];
-                    }
-                } else {
-                    http_response_code(404);
-                    $this->setPagePaths('notfound');
-                    $page = (object)['type' => 'notfound', 'content' => ''];
-                }
-            break;
+        if ($page === "\\0") {
+            $this->pagePath = DATA_DIR . DS . '.invalid-request';
+            $this->cachedPagePath = CACHE_DIR . DS . '.invalid-request';
+            return;
         }
-        $this->servePage($page->type, ['content'=>$page->content]);
+        $relative = str_replace('/', DS, $page);
+        $this->pagePath = DATA_DIR . DS . $relative . '.md';
+        $this->cachedPagePath = CACHE_DIR . DS . $relative . '.html';
     }
-    /**
-     * Returns a list of the available pages in the DATA_DIR folder.
-     *
-     * @return array page list
-     */
+
+    private function isInsideDirectory($path, $directory) {
+        $root = realpath($directory);
+        $target = realpath($path);
+        if ($root === false || $target === false) {
+            return false;
+        }
+        $root = rtrim($root, DS) . DS;
+        return strpos($target, $root) === 0;
+    }
+
+    private function validPageFile($path) {
+        return is_file($path) && $this->isInsideDirectory($path, DATA_DIR);
+    }
+
+    public function handleRequest(string $requestedPage) {
+        if ($requestedPage === "\\0") {
+            http_response_code(404);
+            $this->setPagePaths('notfound');
+            $page = (object)['type' => 'notfound', 'content' => ''];
+        } else {
+            switch ($requestedPage) {
+                case '':
+                    $list = $this->listPages();
+                    $page = (object)['type' => 'list', 'content' => $this->renderPageList($list, true)];
+                    break;
+                case 'projects':
+                    $list = $this->listPages();
+                    $page = (object)['type' => 'list', 'content' => $this->renderPageList($list, 'project')];
+                    break;
+                default:
+                    if ($this->validPageFile($this->pagePath)) {
+                        if (!$this->tryCache($this->cachedPagePath)) {
+                            $page = (object)['type' => 'page', 'content' => $this->renderPage($this->pagePath)];
+                        }
+                    } else {
+                        http_response_code(404);
+                        $this->setPagePaths('notfound');
+                        $page = (object)['type' => 'notfound', 'content' => ''];
+                    }
+                    break;
+            }
+        }
+        $this->servePage($page->type, ['content' => $page->content]);
+    }
+
     public function listPages() {
         $pages = glob(DATA_DIR . DS . '*.md');
         $list = [];
         foreach ($pages as $page) {
-            $pageName = str_replace('.md', '', basename($page));
-            $list[$pageName] = $page;
+            if (is_file($page) && $this->isInsideDirectory($page, DATA_DIR)) {
+                $pageName = substr(basename($page), 0, -3);
+                $list[$pageName] = $page;
+            }
         }
-        return (array)$list;
+        return $list;
     }
-    
-    /** 
-     * Sorts a list of pages based on date attribute.
-     * 
-     * @return array sorted page list
-     */
-    public function sortPageList(array & $list) {
+
+    public function sortPageList(array &$list) {
         uasort($list, function ($a, $b) {
             return strtotime($b->date) - strtotime($a->date);
         });
-        return (array)$list;
+        return $list;
     }
-    /**
-     * Parses a list of pages and filters.
-     *
-     * @param array $list list of pages
-     * @param mixed $filter true for hidden tags, string for specific tag
-     * @return array parsed and filtered list of pages
-     */
+
     public function parsePageList(array $list, $filter) {
         if (empty($list)) {
-            return;
+            return [];
         }
         $parsedPages = [];
         foreach ($list as $name => $path) {
             $page = $this->renderPage($path, true);
             $parsedPages[$name] = $page;
         }
-        return (array)array_filter($parsedPages, function ($item) use ($filter) {
+        return array_filter($parsedPages, function ($item) use ($filter) {
             if ($filter === true) {
                 return !array_intersect(TAGS_TO_HIDE, $item->tags);
-            } elseif (is_string($filter)) {
-                return in_array($filter, $item->tags);
-            } else {
-                return 1;
             }
+            if (is_string($filter)) {
+                return in_array($filter, $item->tags, true);
+            }
+            return true;
         });
     }
-    /**
-     * Creates the HTML for a list of pages.
-     *
-     * @param array $list a list of pages
-     * @param mixed $filter true for hidden tags, string for specific tag
-     * @return string OL list of pages
-     */
+
     public function renderPageList(array $list, $filter) {
         if (empty($list)) {
             return '<h1>ʅ(°⊱,°)ʃ Nothing found</h1>';
@@ -142,37 +195,17 @@ class Saisho {
         $this->sortPageList($list);
         $html = '<ol reversed class="pl">' . PHP_EOL;
         foreach ($list as $handle => $page) {
-            if (isset($page->style)) {
-                $style = ' style="' . $page->style . '"';
-            } else {
-                $style = '';
-            }
-            if (!empty($page->tags)) {
-                $tags = ' [' . implode(', ', $page->tags) . ']';
-            } else {
-                $tags = '';
-            }
-            // $html.= "<li><a{$style} href='{$handle}'>{$page->title}</a> <span class='g'> {$page->date}{$tags}</span></li>" . PHP_EOL;
-            $html.= "<li><span class='g'>{$page->date}</span> <a{$style} href='{$handle}'>{$page->title}</a></li>" . PHP_EOL;
+            $safeHandle = rawurlencode($handle);
+            $html .= '<li><span class="g">' . saisho_escape($page->date) . '</span> <a href="/' .
+                saisho_escape($safeHandle) . '">' . saisho_escape($page->title) . '</a></li>' . PHP_EOL;
         }
-        $html.= '</ol>' . PHP_EOL;
-        return (string)$html;
+        return $html . '</ol>' . PHP_EOL;
     }
-    /**
-     * Get raw content of page
-     *
-     * @param string $pageName the page to read
-     * @return string raw page content
-     */
+
     private function getRawContent(string $pageName) {
-        return (string) file_get_contents($pageName);
+        return (string)file_get_contents($pageName);
     }
-    /**
-     * Parse page YAML Front Matter header, return an array of attributes and body.
-     *
-     * @param string $str raw page content to parse
-     * @return array array of page attributes
-     */
+
     private function parseYaml(string $str) {
         $parsed = [];
         preg_match("'^---(.+?)---'si", $str, $yaml);
@@ -182,132 +215,126 @@ class Saisho {
         $str = str_replace($yaml[0], '', $str);
         $parsed['body'] = $str;
         $yaml = trim($yaml[0]);
-        preg_match_all("'(\w+):\s?(.+)'m", $yaml, $yaml_attribs, PREG_SET_ORDER);
-        foreach ($yaml_attribs as $attribute) {
+        preg_match_all("'(\\w+):\\s?(.+)'m", $yaml, $yamlAttribs, PREG_SET_ORDER);
+        foreach ($yamlAttribs as $attribute) {
             $parsed[$attribute[1]] = trim($attribute[2]);
         }
-        return (array) $parsed;
+        return $parsed;
     }
-    /**
-     * Render page markdown and assign meta values. If no value present, required
-     * attributes are given default values.
-     *
-     * @param string $pageName
-     * @param boolean $onlyYaml if true only returns page metadata with no body.
-     * @return object page object
-     */
+
     public function renderPage(string $pageName, bool $onlyYaml = false) {
+        if (!$this->validPageFile($pageName)) {
+            throw new RuntimeException('Page path is outside the content directory.');
+        }
         include_once INC_DIR . DS . 'Parsedown.php';
         include_once INC_DIR . DS . 'ParsedownExtra.php';
         include_once INC_DIR . DS . 'ParsedownExtended.php';
         $contentRaw = $this->getRawContent($pageName);
         $page = $this->parseYaml($contentRaw);
-        $page['title'] = $page['title']??'untitled';
-        $page['date'] = $page['date']??'1969-01-01';
-        $page['modified'] = filectime($pageName);
-        $page['tags'] = isset($page['tags']) ? explode(',', $page['tags']) : [];
-        $parsedown = new ParsedownExtended(["toc" => ["enable" => true, "inline" => true], "mark" => true, "insert" => true, "task" => true, "kbd" => true]);
+        $page = (array)$page;
+        $page['title'] = $page['title'] ?? 'untitled';
+        $page['date'] = $page['date'] ?? '1969-01-01';
+        $page['modified'] = filemtime($pageName);
+        $page['tags'] = isset($page['tags']) ? array_map('trim', explode(',', $page['tags'])) : [];
+        $parsedown = new ParsedownExtended(['toc' => ['enable' => true, 'inline' => true], 'mark' => true, 'insert' => true, 'task' => true, 'kbd' => true]);
+        if (method_exists($parsedown, 'setSafeMode')) {
+            $parsedown->setSafeMode(true);
+        }
         if (!$onlyYaml) {
-            $page['body'] = $parsedown->text($page['body']);
+            $page['body'] = $parsedown->text($page['body'] ?? '');
         } else {
             unset($page['body']);
         }
         return (object)$page;
     }
-    /**
-     * Construct XML RSS feed
-     *
-     * @return string RSS feed
-     */
+
     private function buildFeed() {
-        $pages = $this->listPages();
-        $pages = $this->parsePageList($pages, true);
-        $xml = '
-        <rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
-        <channel>
-        <title>' . META_TITLE . '</title>
-        <link>' . HOST . '</link>
-        <description>' . META_DESCRIPTION . '</description>
-        <generator>Saisho</generator>
-        <language>en-us</language>
-        <lastBuildDate>' . date('r') . '</lastBuildDate>
-        <atom:link href="' . HOST . '/feed.xml" rel="self" type="application/rss+xml"/>' . PHP_EOL;
+        $pages = $this->parsePageList($this->listPages(), true);
+        $base = saisho_site_url();
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL;
+        $xml .= '<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel>';
+        $xml .= '<title>' . saisho_xml_escape(META_TITLE) . '</title>';
+        $xml .= '<link>' . saisho_xml_escape($base . '/') . '</link>';
+        $xml .= '<description>' . saisho_xml_escape(META_DESCRIPTION) . '</description>';
+        $xml .= '<generator>Saisho</generator><language>en-us</language>';
+        $xml .= '<lastBuildDate>' . saisho_xml_escape(date(DATE_RSS)) . '</lastBuildDate>';
+        $xml .= '<atom:link href="' . saisho_xml_escape($base . '/feed.xml') . '" rel="self" type="application/rss+xml"/>';
         foreach ($pages as $handle => $page) {
-            $xml.= '<item>' . PHP_EOL;
-            $xml.= '<title>' . $page->title . '</title>' . PHP_EOL;
-            $xml.= '<link>' . HOST . DS . $handle . '</link>' . PHP_EOL;
-            $xml.= '<pubDate>' . date('r', strtotime($page->date)) . '</pubDate>' . PHP_EOL;
-            $xml.= '<description>' . ($page->description??'') . '</description>' . PHP_EOL;
-            $xml.= '</item>' . PHP_EOL;
+            $link = $base . '/' . rawurlencode($handle);
+            $xml .= '<item><title>' . saisho_xml_escape($page->title) . '</title>';
+            $xml .= '<link>' . saisho_xml_escape($link) . '</link>';
+            $xml .= '<pubDate>' . saisho_xml_escape(date(DATE_RSS, strtotime($page->date))) . '</pubDate>';
+            $xml .= '<description>' . saisho_xml_escape($page->description ?? '') . '</description></item>';
         }
-        $xml.= '</channel></rss>';
-        return $xml;
+        return $xml . '</channel></rss>';
     }
-    /**
-     * Save RSS feed
-     *
-     * @param string $filename filename to use, feed.xml by default.
-     * @return string RSS feed URL
-     */
+
     public function saveFeed($filename = 'feed.xml') {
-        if ((time() - filectime($filename) >= CACHE_TIME) || !file_exists($filename)) {
-            $fh = fopen($filename, 'w');
-            if (!$fh) {
+        $path = ROOT_DIR . DS . 'feed.xml';
+        $mtime = is_file($path) ? filemtime($path) : 0;
+        if (!$mtime || (time() - $mtime >= CACHE_TIME)) {
+            $temporary = $path . '.' . uniqid('', true) . '.tmp';
+            if (file_put_contents($temporary, $this->buildFeed(), LOCK_EX) === false) {
                 return false;
             }
-            fwrite($fh, $this->buildFeed());
-            fclose($fh);
-            return HOST . DS . 'feed.xml';
+            if (!rename($temporary, $path)) {
+                @unlink($temporary);
+                return false;
+            }
         }
+        return saisho_site_url() . '/feed.xml';
     }
+
     public function servePage(string $template, array $args) {
-        $render = $this->renderTemplate( $template, $args);
-        if ($this->requestedPage!== '') {
-            file_put_contents($this->cachedPagePath, $render);
+        $render = $this->renderTemplate($template, $args);
+        if ($this->requestedPage !== '' && $this->requestedPage !== "\\0") {
+            $directory = dirname($this->cachedPagePath);
+            if (!is_dir($directory)) {
+                @mkdir($directory, 0755, true);
+            }
+            if (is_dir($directory)) {
+                $temporary = $this->cachedPagePath . '.' . uniqid('', true) . '.tmp';
+                if (file_put_contents($temporary, $render, LOCK_EX) !== false) {
+                    @rename($temporary, $this->cachedPagePath);
+                }
+            }
             $this->saveFeed();
         }
         echo $render;
     }
-    /**
-     * Try serving page from cached HTML.
-     * Returns false if page not found or out of date.
-     *
-     * @param string $filePath file to read
-     * @return void|bool reads the file and exits if cache exits, returns false if not
-     */
+
     private function tryCache(string $filePath) {
-        $filectime = @filectime($filePath);
-        if ($filectime && (time() - $filectime <= CACHE_TIME)) {
+        if (!is_file($filePath) || !$this->isInsideDirectory($filePath, CACHE_DIR)) {
+            return false;
+        }
+        $filemtime = @filemtime($filePath);
+        if ($filemtime && (time() - $filemtime <= CACHE_TIME)) {
             readfile($filePath);
-            echo '<pre>' . round(((microtime(true) - $this->time) * 1000), 3) . 'ms</pre>';
             exit;
         }
         return false;
     }
-    /**
-     * Render template and return result from output buffer
-     *
-     * @param string $template template name
-     * @param array $args arguments to pass
-     * @return void
-     */
-    private function renderTemplate(string $template, array $args)
-    {
+
+    private function renderTemplate(string $template, array $args) {
+        $templatePath = TEMPLATE_DIR . DS . $template . '.php';
+        $templateRoot = realpath(TEMPLATE_DIR);
+        $resolved = realpath($templatePath);
+        if ($resolved === false || $templateRoot === false ||
+            strpos($resolved, rtrim($templateRoot, DS) . DS) !== 0) {
+            http_response_code(500);
+            return 'Template not found.';
+        }
         ob_start();
-        if (!file_exists(TEMPLATE_DIR.DS.$template.'.php')) return (string) "Template $template.php not found!";
         $page = (object)[];
-        foreach ( $args as $key => $value) {
-            $page->{$key} = &$value;
+        foreach ($args as $key => $value) {
+            $page->{$key} = $value;
         }
-        if ($this->requestedPage!== '') {
-            header('Last-Modified:' . gmdate('D, d M Y H:i:s ', $page->content->modified??time()) . 'GMT');
-            echo '<!-- Saisho Cached Copy - ' . date('Y-m-d h:i:s') . ' -->' . PHP_EOL;
+        if ($this->requestedPage !== '') {
+            header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $page->content->modified ?? time()) . ' GMT');
         }
-        include TEMPLATE_DIR.DS.$template.'.php';
-        return ob_get_clean();
-    }
-    public function debug($var) {
-        echo '<pre>' . var_export($var, true) . '</pre>';
+        include $resolved;
+        return (string)ob_get_clean();
     }
 }
+
 $saisho = new Saisho();
