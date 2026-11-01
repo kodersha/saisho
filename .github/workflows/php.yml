@@ -1,0 +1,21 @@
+name: PHP checks
+
+on:
+  push:
+    branches: [master, security-hardening]
+  pull_request:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring
+      - name: Lint PHP files
+        run: |
+          find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+      - name: Run security smoke tests
+        run: php tests/security-smoke.php
