@@ -17,16 +17,16 @@ $_SERVER['REQUEST_URI'] = '/articles/hello-world?preview=1';
 check($engine->getRequestedPage() === 'articles/hello-world', 'query string is not part of the page path');
 
 $_SERVER['REQUEST_URI'] = '/%2e%2e/secret';
-check($engine->getRequestedPage() === "\0", 'encoded traversal is rejected');
+check($engine->getRequestedPage() === "\\0", 'encoded traversal is rejected');
 
 $_SERVER['REQUEST_URI'] = '/%252e%252e/secret';
-check($engine->getRequestedPage() === "\0", 'double-encoded traversal is rejected');
+check($engine->getRequestedPage() === "\\0", 'double-encoded traversal is rejected');
 
 $_SERVER['REQUEST_URI'] = '/folder%5csecret';
-check($engine->getRequestedPage() === "\0", 'encoded backslash is rejected');
+check($engine->getRequestedPage() === "\\0", 'encoded backslash is rejected');
 
 $_SERVER['REQUEST_URI'] = '/bad%00name';
-check($engine->getRequestedPage() === "\0", 'null byte is rejected');
+check($engine->getRequestedPage() === "\\0", 'null byte is rejected');
 
 $_SERVER['REQUEST_URI'] = '/valid-page';
 check($engine->getRequestedPage() === 'valid-page', 'valid page slug is accepted');
