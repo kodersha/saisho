@@ -3,7 +3,8 @@
  * Create the initial Saisho administrator.
  *
  * Usage:
- *   SAISHO_ADMIN_USERNAME=admin SAISHO_ADMIN_PASSWORD='long-random-password' php bin/create-admin.php
+ *   SAISHO_ADMIN_USERNAME=admin php bin/create-admin.php
+ *   (The password is prompted interactively and hidden on POSIX terminals.)
  *
  * PowerShell:
  *   $env:SAISHO_ADMIN_USERNAME = "admin"
@@ -19,7 +20,24 @@ $root = dirname(__DIR__);
 $configDir = $root . DIRECTORY_SEPARATOR . 'config';
 $configFile = $configDir . DIRECTORY_SEPARATOR . 'admin.json';
 $username = getenv('SAISHO_ADMIN_USERNAME');
+if (!is_string($username) || $username === '') {
+    fwrite(STDOUT, "Administrator username: ");
+    $username = trim((string)fgets(STDIN));
+}
+
 $password = getenv('SAISHO_ADMIN_PASSWORD');
+if (!is_string($password) || $password === '') {
+    fwrite(STDOUT, "Administrator password: ");
+    $canHideInput = DIRECTORY_SEPARATOR !== '\\\\' && function_exists('shell_exec');
+    if ($canHideInput) {
+        @shell_exec('stty -echo');
+    }
+    $password = rtrim((string)fgets(STDIN), "\\r\\n");
+    if ($canHideInput) {
+        @shell_exec('stty echo');
+        fwrite(STDOUT, PHP_EOL);
+    }
+}
 
 if (!is_string($username) || !preg_match('/\A[a-zA-Z0-9_.-]{3,80}\z/', $username)) {
     fwrite(STDERR, "Set SAISHO_ADMIN_USERNAME (3-80 letters, digits, dot, underscore or hyphen).\n");
