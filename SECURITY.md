@@ -41,3 +41,34 @@ php -l template/head.php
 ```
 
 These smoke tests cover route normalization and output escaping. They are not a substitute for testing the site behind its production web server.
+
+## Administrator and publishing panel
+
+The administration panel is available at `/admin`. It supports login, logout and creation of Markdown posts. Public self-registration is not provided.
+
+Create the first administrator from the project root using the CLI-only setup script. Do not commit the resulting credentials file:
+
+Linux/macOS:
+```sh
+SAISHO_ADMIN_USERNAME=admin SAISHO_ADMIN_PASSWORD='use-a-long-random-password' php bin/create-admin.php
+```
+
+PowerShell:
+```powershell
+$env:SAISHO_ADMIN_USERNAME = "admin"
+$env:SAISHO_ADMIN_PASSWORD = "use-a-long-random-password"
+php bin/create-admin.php
+Remove-Item Env:SAISHO_ADMIN_PASSWORD
+Remove-Item Env:SAISHO_ADMIN_USERNAME
+```
+
+Use a unique password of at least 14 characters. The script stores only a password hash in `config/admin.json`, sets restrictive filesystem permissions where supported, and refuses to overwrite an existing administrator. Keep `config/` outside public access. The included Apache rule denies HTTP access; for Nginx, add:
+
+```nginx
+location ^~ /config/ { deny all; }
+location ^~ /bin/ { deny all; }
+```
+
+The panel uses PHP sessions with HttpOnly and SameSite=Strict cookies, session ID regeneration after login, CSRF tokens on state-changing forms, and a short session-based login cooldown. Use HTTPS in production. Ensure `config/` is writable during setup and then not writable by the web process. The web process needs write access to `data/` to publish posts and to `cache/` for page caching.
+
+Posts are created as UTF-8 Markdown files in `data/`. Slugs are restricted to lowercase ASCII letters, digits and hyphens, reserved routes are rejected, and existing files are never overwritten. The panel does not currently provide post editing or deletion.
