@@ -338,4 +338,6 @@ class Saisho {
     }
 }
 
-if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) {\n    $saisho = new Saisho();\n}
+if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) {
+    $saisho = new Saisho();
+}
