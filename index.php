@@ -3,7 +3,8 @@
 最小  —  Saishō MK. 2
 https://paulglushak.com/saisho
 */
-define('SAISHO_VERSION', '20200830');
+require_once __DIR__ . '/inc/Security.php';
+define('SAISHO_VERSION', '20261101');
 define('META_TITLE', 'Saisho');
 define('META_DESCRIPTION', 'Very (VERY) simple and quick semi-static site engine');
 define('HOST', '//' . $_SERVER['HTTP_HOST']);
@@ -62,7 +63,7 @@ class Saisho {
                 $page = (object)['type'=>'list', 'content'=>$this->renderPageList($list, 'project')];
             break;
             default:
-                if (file_exists($this->pagePath)) {
+                if (saisho_is_safe_content_file($this->pagePath)) {
                     if (!$this->tryCache($this->cachedPagePath)) {
                         $page = (object)['type' => 'page', 'content' => $this->renderPage($this->pagePath) ];
                     }
@@ -207,6 +208,9 @@ class Saisho {
         $page['modified'] = filectime($pageName);
         $page['tags'] = isset($page['tags']) ? explode(',', $page['tags']) : [];
         $parsedown = new ParsedownExtended(["toc" => ["enable" => true, "inline" => true], "mark" => true, "insert" => true, "task" => true, "kbd" => true]);
+        if (method_exists($parsedown, 'setSafeMode')) {
+            $parsedown->setSafeMode(true);
+        }
         if (!$onlyYaml) {
             $page['body'] = $parsedown->text($page['body']);
         } else {
