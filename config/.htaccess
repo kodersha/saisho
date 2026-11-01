@@ -1,0 +1,2 @@
+# Never serve administrator credentials over HTTP.
+Require all denied
