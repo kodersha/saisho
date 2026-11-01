@@ -64,7 +64,7 @@ class Saisho {
             break;
             default:
                 if (saisho_is_safe_content_file($this->pagePath)) {
-                    if (!$this->tryCache($this->cachedPagePath)) {
+                    if (!$this->tryCache($this->cachedPagePath, $this->pagePath)) {
                         $page = (object)['type' => 'page', 'content' => $this->renderPage($this->pagePath) ];
                     }
                 } else {
@@ -111,10 +111,11 @@ class Saisho {
      */
     public function parsePageList(array $list, $filter) {
         if (empty($list)) {
-            return;
+            return [];
         }
         $parsedPages = [];
         foreach ($list as $name => $path) {
+            if (!saisho_is_safe_content_file($path)) { continue; }
             $page = $this->renderPage($path, true);
             $parsedPages[$name] = $page;
         }
@@ -143,18 +144,13 @@ class Saisho {
         $this->sortPageList($list);
         $html = '<ol reversed class="pl">' . PHP_EOL;
         foreach ($list as $handle => $page) {
-            if (isset($page->style)) {
-                $style = ' style="' . $page->style . '"';
-            } else {
-                $style = '';
-            }
-            if (!empty($page->tags)) {
-                $tags = ' [' . implode(', ', $page->tags) . ']';
-            } else {
-                $tags = '';
-            }
-            // $html.= "<li><a{$style} href='{$handle}'>{$page->title}</a> <span class='g'> {$page->date}{$tags}</span></li>" . PHP_EOL;
-            $html.= "<li><span class='g'>{$page->date}</span> <a{$style} href='{$handle}'>{$page->title}</a></li>" . PHP_EOL;
+            $safeHandle = saisho_escape($handle);
+            $safeTitle = saisho_escape($page->title ?? 'untitled');
+            $safeDate = saisho_escape($page->date ?? '');
+            $safeTags = !empty($page->tags)
+                ? ' [' . implode(', ', array_map('saisho_escape', $page->tags)) . ']'
+                : '';
+            $html .= '<li><span class="g">' . $safeDate . '</span> <a href="' . $safeHandle . '">' . $safeTitle . '</a>' . $safeTags . '</li>' . PHP_EOL;
         }
         $html.= '</ol>' . PHP_EOL;
         return (string)$html;
@@ -178,7 +174,7 @@ class Saisho {
         $parsed = [];
         preg_match("'^---(.+?)---'si", $str, $yaml);
         if (!isset($yaml[0])) {
-            return (object)['body' => $str];
+            return ['body' => $str];
         }
         $str = str_replace($yaml[0], '', $str);
         $parsed['body'] = $str;
@@ -279,12 +275,18 @@ class Saisho {
      * @param string $filePath file to read
      * @return void|bool reads the file and exits if cache exits, returns false if not
      */
-    private function tryCache(string $filePath) {
-        $filectime = @filectime($filePath);
-        if ($filectime && (time() - $filectime <= CACHE_TIME)) {
+    private function tryCache(string $filePath, string $sourcePath = '') {
+        $cacheTime = @filemtime($filePath);
+        $sourceTime = $sourcePath !== '' ? @filemtime($sourcePath) : false;
+        if (
+            $cacheTime !== false &&
+            (time() - $cacheTime) >= 0 &&
+            (time() - $cacheTime) <= CACHE_TIME &&
+            ($sourcePath === '' || ($sourceTime !== false && $cacheTime >= $sourceTime))
+        ) {
+            header('Content-Type: text/html; charset=UTF-8');
             readfile($filePath);
-            echo '<pre>' . round(((microtime(true) - $this->time) * 1000), 3) . 'ms</pre>';
-            exit;
+            return true;
         }
         return false;
     }
