@@ -2,11 +2,12 @@
 
 include 'head.php';
 
-echo '<a href="' . HOST . '">'.META_TITLE.'</a> / <strong><span role="heading" aria-level=1>'.$page->content->title.'</span></strong>';
-$html = <<<EOD
-		<div class="content">{$page->content->body}</div>
-		<div class="meta g">Last Modified: {$page->content->modified}</div>
-		EOD;
-echo $html;
+echo '<a href="' . saisho_escape(HOST) . '">' . saisho_escape(META_TITLE) . '</a> / ';
+echo '<strong><span role="heading" aria-level="1">' . saisho_escape($page->content->title ?? 'untitled') . '</span></strong>';
 
-include 'footer.php';
+$modified = (int)($page->content->modified ?? time());
+?>
+<div class="content"><?= $page->content->body ?? '' ?></div>
+<div class="meta g">Last Modified: <?= saisho_escape(date('Y-m-d H:i:s', $modified)) ?></div>
+
+<?php include 'footer.php'; ?>
