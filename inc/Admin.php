@@ -235,7 +235,7 @@ class SaishoAdmin
                 $error = 'Укажите заголовок длиной не более 180 символов.';
             } elseif (!preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/', $values['slug'])) {
                 $error = 'Slug должен содержать только латинские строчные буквы, цифры и дефисы.';
-            } elseif (in_array($values['slug'], ['admin', 'projects', 'feed'], true)) {
+            } elseif (in_array($values['slug'], ['admin', 'projects', 'feed', 'notfound'], true)) {
                 $error = 'Этот slug зарезервирован.';
             } elseif (!preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $values['date']) ||
                 DateTime::createFromFormat('!Y-m-d', $values['date']) === false ||
