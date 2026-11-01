@@ -1,0 +1,4 @@
+# Prevent direct disclosure of Markdown source while allowing public assets.
+<FilesMatch "\\.md$">
+    Require all denied
+</FilesMatch>
