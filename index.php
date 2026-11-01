@@ -331,7 +331,8 @@ class Saisho {
         }
         $content = is_object($page->content) ? (array)$page->content : [];
         if ($this->requestedPage !== '') {
-            header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $page->content->modified ?? time()) . ' GMT');
+            $modified = is_object($page->content) ? ($page->content->modified ?? time()) : time();
+            header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $modified) . ' GMT');
         }
         include $resolved;
         return (string)ob_get_clean();
