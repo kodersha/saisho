@@ -270,6 +270,7 @@ class SaishoAdmin
                         @unlink($target);
                         $error = 'Не удалось полностью записать публикацию.';
                     } else {
+                        @unlink(CACHE_DIR . DS . $values['slug'] . '.html');
                         @unlink(ROOT_DIR . DS . 'feed.xml');
                         header('Location: /' . rawurlencode($values['slug']), true, 303);
                         exit;
