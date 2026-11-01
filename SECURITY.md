@@ -50,25 +50,33 @@ Create the first administrator from the project root using the CLI-only setup sc
 
 Linux/macOS:
 ```sh
-SAISHO_ADMIN_USERNAME=admin SAISHO_ADMIN_PASSWORD='use-a-long-random-password' php bin/create-admin.php
+SAISHO_ADMIN_USERNAME=admin php bin/create-admin.php
 ```
 
-PowerShell:
+The script prompts for the password without echoing it on POSIX terminals. It requires at least 14 characters.
+
+PowerShell (prompts for the password securely):
 ```powershell
 $env:SAISHO_ADMIN_USERNAME = "admin"
-$env:SAISHO_ADMIN_PASSWORD = "use-a-long-random-password"
-php bin/create-admin.php
-Remove-Item Env:SAISHO_ADMIN_PASSWORD
-Remove-Item Env:SAISHO_ADMIN_USERNAME
+$secure = Read-Host "Administrator password" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+try {
+    $env:SAISHO_ADMIN_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+    php bin/create-admin.php
+} finally {
+    Remove-Item Env:SAISHO_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    Remove-Item Env:SAISHO_ADMIN_USERNAME -ErrorAction SilentlyContinue
+}
 ```
 
-Use a unique password of at least 14 characters. The script stores only a password hash in `config/admin.json`, sets restrictive filesystem permissions where supported, and refuses to overwrite an existing administrator. Keep `config/` outside public access. The included Apache rule denies HTTP access; for Nginx, add:
+Use a unique password. The script stores only a password hash in `config/admin.json`, sets restrictive filesystem permissions where supported, and refuses to overwrite an existing administrator. Keep `config/` outside public access. The included Apache rule denies HTTP access; for Nginx, add:
 
 ```nginx
 location ^~ /config/ { deny all; }
 location ^~ /bin/ { deny all; }
 ```
 
-The panel uses PHP sessions with HttpOnly and SameSite=Strict cookies, session ID regeneration after login, CSRF tokens on state-changing forms, and a short session-based login cooldown. Use HTTPS in production. Ensure `config/` is writable during setup and then not writable by the web process. The web process needs write access to `data/` to publish posts and to `cache/` for page caching.
+The panel uses PHP sessions with HttpOnly and SameSite=Strict cookies, session ID regeneration after login, CSRF tokens on state-changing forms, and a short session-based login cooldown. Use HTTPS in production. Ensure `config/` is writable during setup and then not writable by the web process. The PHP worker must be able to read `config/admin.json`; when CLI and PHP run as different users, place them in a shared read-only group or adjust ownership accordingly. The web process needs write access to `data/` to publish posts and to `cache/` for page caching.
 
 Posts are created as UTF-8 Markdown files in `data/`. Slugs are restricted to lowercase ASCII letters, digits and hyphens, reserved routes are rejected, and existing files are never overwritten. The panel does not currently provide post editing or deletion.
