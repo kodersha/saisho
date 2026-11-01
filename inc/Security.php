@@ -70,3 +70,13 @@ function saisho_sanitize_host_header(): void
 
 saisho_normalize_request_uri();
 saisho_sanitize_host_header();
+
+function saisho_escape($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function saisho_xml_escape($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
+}
