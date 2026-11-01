@@ -35,12 +35,7 @@ function saisho_site_url() {
         }
     }
 
-    $serverName = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost';
-    if (!preg_match('/\\A[a-zA-Z0-9.-]+\\z/', $serverName)) {
-        $serverName = 'localhost';
-    }
-    $scheme = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ? 'https' : 'http';
-    return $scheme . '://' . $serverName;
+    return 'http://localhost';
 }
 
 function saisho_security_headers() {
