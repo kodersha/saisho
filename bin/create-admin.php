@@ -47,6 +47,6 @@ if ($data === false || file_put_contents($configFile, $data . PHP_EOL, LOCK_EX) 
     fwrite(STDERR, "Could not write administrator credentials.\n");
     exit(1);
 }
-@chmod($configDir, 0700);
-@chmod($configFile, 0600);
+@chmod($configDir, 0750);
+@chmod($configFile, 0640);
 fwrite(STDOUT, "Administrator created. Remove SAISHO_ADMIN_PASSWORD from the environment.\n");
