@@ -248,7 +248,7 @@ class SaishoAdmin
             } else {
                 $title = str_replace(["\r", "\n"], ' ', $values['title']);
                 $description = str_replace(["\r", "\n"], ' ', $values['description']);
-                $tags = preg_replace('/[^\p{L}\p{N}_ -]/u', '', $values['tags']);
+                $tags = preg_replace('/[^\p{L}\p{N}_ ,\-]/u', '', $values['tags']);
                 $markdown = "---\n";
                 $markdown .= 'title: ' . $title . "\n";
                 $markdown .= 'date: ' . $values['date'] . "\n";
