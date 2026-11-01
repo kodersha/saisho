@@ -28,11 +28,11 @@ if (!is_string($username) || $username === '') {
 $password = getenv('SAISHO_ADMIN_PASSWORD');
 if (!is_string($password) || $password === '') {
     fwrite(STDOUT, "Administrator password: ");
-    $canHideInput = DIRECTORY_SEPARATOR !== '\\\\' && function_exists('shell_exec');
+    $canHideInput = DIRECTORY_SEPARATOR !== '\\' && function_exists('shell_exec');
     if ($canHideInput) {
         @shell_exec('stty -echo');
     }
-    $password = rtrim((string)fgets(STDIN), "\\r\\n");
+    $password = rtrim((string)fgets(STDIN), "\r\n");
     if ($canHideInput) {
         @shell_exec('stty echo');
         fwrite(STDOUT, PHP_EOL);
@@ -44,7 +44,7 @@ if (!is_string($username) || !preg_match('/\A[a-zA-Z0-9_.-]{3,80}\z/', $username
     exit(1);
 }
 if (!is_string($password) || strlen($password) < 14) {
-    fwrite(STDERR, "Set SAISHO_ADMIN_PASSWORD to a password of at least 14 characters.\n");
+    fwrite(STDERR, "Password must contain at least 14 characters.\n");
     exit(1);
 }
 if (is_file($configFile)) {
