@@ -78,7 +78,7 @@ class Saisho {
         if ($path === '') {
             return '';
         }
-        if (strpos($path, "\\0") !== false || strpos($path, '\\\\') !== false ||
+        if (strpos($path, "\\0") !== false || strpos($path, chr(92)) !== false ||
             preg_match('/[\\x00-\\x1F\\x7F]/', $path) ||
             !preg_match('/\\A[A-Za-z0-9_-]+(?:\\/[A-Za-z0-9_-]+)*\\z/', $path)) {
             return "\\0";
@@ -329,6 +329,7 @@ class Saisho {
         foreach ($args as $key => $value) {
             $page->{$key} = $value;
         }
+        $content = is_object($page->content) ? (array)$page->content : [];
         if ($this->requestedPage !== '') {
             header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $page->content->modified ?? time()) . ' GMT');
         }
@@ -337,4 +338,4 @@ class Saisho {
     }
 }
 
-$saisho = new Saisho();
+if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) {\n    $saisho = new Saisho();\n}
